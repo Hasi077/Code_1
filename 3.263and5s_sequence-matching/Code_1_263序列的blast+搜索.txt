@@ -1,0 +1,91 @@
+#blast+的解压文件地址
+home/jiaxu/ncbi-blast-2.16.0+-x64-linux.tar/ncbi-blast-2.16.0+-x64-linux/ncbi-blast-2.16.0+/bin
+
+#(1). 安装blast+-linux版
+#1. ncbi下载“ncbi-blast-2.16.0+-x64-linux.tar.gz”  ，根据自己系统下载。
+#2. 进入linxu的blast-bin目录
+cd /path/to/ncbi-blast-2.16.0+/bin
+#3. 编辑 .bashrc 文件，将解压后的 bin 目录加入 PATH
+nano ~/.bashrc
+#4. 文件末尾添加：
+export PATH=$PATH:/home/jiaxu/ncbi-blast-2.16.0+-x64-linux/ncbi-blast-2.16.0+/bin
+#5. 保存并退出：按 Ctrl + O 保存，按 Enter 确认，按 Ctrl + X 退出。
+#6. 新的环境变量生效
+source ~/.bashrc
+#7. 验证
+blastn -version
+
+#(2). 基因组本地建库
+#1. 解决makeblastdb无法建库
+sudo apt update
+sudo apt install libgomp1
+sudo ldconfig
+
+#2. 构建带染色体编号和序列起始位置的基因组建库
+makeblastdb -in Luojin_jiyu_C.auratus.chromosome_20210819.fasta -dbtype nucl -parse_seqids -title "Genome with chromosomes"
+
+#“/home/jiaxu/ncbi-blast-2.16.0+-x64-linux.tar/ncbi-blast-2.16.0+-x64-linux/ncbi-blast-2.16.0+/bin/Genomes/Luojin_jiyu_C.auratus.chromosome_20210819.fasta”为基因组文件保存绝对位置。
+
+
+#(3). 以精准方式查找263序列, 并给出匹配序列数
+#1. 简单形式的精确搜索方式：
+grep -o "AAGCTTTTCTCTCTATTAGATAAAGCTGTTTCATTCAGTATTCAGTGCAAATCTTGCCAAACTGAAACAAGCTTATGTCTTATGAAGTACAATGTTTTCTGCAATGCTGTAAGACAGTTTTTAATGTGTTAGAAGTTATATACACAAAAACTAATGTTAGAACTTCAATGATCAAGATTGTCAGTTTACAGCTTTCTGAGTCCAGTAATGTTGAAATAGTGTTTCTGTTCAAATGAAGTGAAATCAAGCCCAAATCTGCTCAA" Luojin_jiyu_C.auratus.chromosome_20210819.fasta | tee Jiyu_luojin_focus_matched_sequences.txt | wc -l | tee Jiyu_luojin_focus_matched_count.txt
+
+# 将匹配序列数与对应匹配序列合并，并导出至文件“final_blast_results.txt”，结果将依次包括“匹配数列”“查询序列列”“基因组匹配序列列”“序列相似度列”“相似碱基数列”
+echo "Total Matches:" $(Jiyu_luojin_focus_matched_count.txt) > Jiyu_luojin_focus_final_blast_results.txt
+cat Jiyu_luojin_focus_matched_sequences.txt  >> Jiyu_luojin_focus_final_blast_results.txt
+
+#2. 包括染色体编号与起始位置的精确搜索方式：
+# 查询序列
+query="AAGCTTTTCTCTCTATTAGATAAAGCTGTTTCATTCAGTATTCAGTGCAAATCTTGCCAAACTGAAACAAGCTTATGTCTTATGAAGTACAATGTTTTCTGCAATGCTGTAAGACAGTTTTTAATGTGTTAGAAGTTATATACACAAAAACTAATGTTAGAACTTCAATGATCAAGATTGTCAGTTTACAGCTTTCTGAGTCCAGTAATGTTGAAATAGTGTTTCTGTTCAAATGAAGTGAAATCAAGCCCAAATCTGCTCAA"
+# 基因组文件
+genome_file="Luojin_jiyu_C.auratus.chromosome_20210819.fasta"
+# 输出文件
+output_file="Jiyu_luojin_focus_final_blast_results.txt"
+# 清空输出文件（如果文件已存在）
+> "$output_file"
+# 添加列名
+echo -e "qseq\tsseq\tpident\tlength\tsseqid\tsstart\tsend" > "$output_file"
+# 查找匹配序列
+grep -o -b "$query" "$genome_file" | while read -r line; do
+    # 提取匹配的字节偏移量
+    offset=$(echo "$line" | cut -d':' -f1)
+    # 提取染色体编号（FASTA头行）
+    chr=$(grep -B1 "$query" "$genome_file" | grep ">" | sed 's/>//')
+    # 计算起始和终止位置
+    sstart=$(($offset + 1))
+    send=$(($sstart + ${#query} - 1))
+    # 输出结果到TSV文件
+    echo -e "$query\t$query\t100\t${#query}\t$chr\t$sstart\t$send" >> "$output_file"
+done
+echo "Results have been saved to $output_file"
+
+
+
+#(4). 查找263相似序列，并给出匹配序列数
+echo ">query263_sequence
+AAGCTTTTCTCTCTATTAGATAAAGCTGTTTCATTCAGTATTCAGTGCAAATCTTGCCAAACTGAAACAAGCTTATGTCTTATGAAGTACAATGTTTTCTGCAATGCTGTAAGACAGTTTTTAATGTGTTAGAAGTTATATACACAAAAACTAATGTTAGAACTTCAATGATCAAGATTGTCAGTTTACAGCTTTCTGAGTCCAGTAATGTTGAAATAGTGTTTCTGTTCAAATGAAGTGAAATCAAGCCCAAATCTGCTCAA" > query263.fasta
+
+blastn -query query263.fasta -db Luojin_jiyu_C.auratus.chromosome_20210819.fasta -outfmt "6 qseq sseq pident length sseqid sstart send" -out Jiyu_luojin_fuzzy_sequence_results.txt
+cat Jiyu_luojin_fuzzy_sequence_results.txt | wc -l | tee Jiyu_luojin_fuzzy_count.txt
+
+#将匹配序列数与对应匹配序列合并，并导出至文件“final_blast_results.txt”，结果将依次包括“匹配数列”“查询序列列”“基因组匹配序列列”“序列相似度列”“相似碱基数列”
+{
+  echo -e "qseq\tsseq\tpident\tlength\tsseqid\tsstart\tsend"
+  cat Jiyu_luojin_fuzzy_sequence_results.txt
+} > Jiyu_luojin_fuzzy_final_blast_results.txt
+
+# 添加匹配总数
+{
+  echo "Total Matches: $(cat Jiyu_luojin_fuzzy_count.txt)"
+  cat Jiyu_luojin_fuzzy_final_blast_results.txt
+} > Jiyu_luojin_fuzzy_Final_blast_results.txt
+echo "Final results have been saved to final_blast_results.txt"
+
+#(5). .txt转csv
+ awk '{print $1","$2","$3","$4","$5","$6","$7}' Jiyu_luojin_fuzzy_final_blast_results.txt > Jiyu_luojin_fuzzy_final_blast_results.csv
+
+
+
+
+
